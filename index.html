@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2F4A6D">
+<title>전경 길잡이</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<link rel="stylesheet" href="style.css">
+<style>
+#lock{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:#2F4A6D;padding:24px}
+body.locked #lock{display:flex}body.locked #app{display:none}
+#lock .box{background:#fff;border-radius:16px;padding:26px 22px;width:100%;max-width:340px;text-align:center;font-family:sans-serif}
+#lock h1{font-size:20px;margin:0 0 6px;color:#2F4A6D}#lock p{margin:0 0 14px;font-size:14px;color:#555}
+#lock input{width:100%;box-sizing:border-box;font-size:20px;padding:10px;text-align:center;border:2px solid #ccc;border-radius:10px;letter-spacing:4px}
+#lock button{margin-top:12px;width:100%;font-size:17px;padding:12px;border:0;border-radius:10px;background:#2F4A6D;color:#fff}
+#lock .err{color:#c0392b;font-size:14px;min-height:1.2em;margin-top:8px}
+</style>
+<script>
+/* 간단한 비밀번호 잠금: 지인에게만 비밀번호를 알려 줌. 한 번 열면 이 폰에서는 다시 묻지 않음 */
+(function(){var K="jg-unlock",H="f8b4ffda2d1b142a4f29c591b957d7f98dbcc6a8d1d56765261deaefbdcf48e7";
+var ok=false;try{ok=localStorage.getItem(K)===H}catch(e){}
+if(ok||location.protocol==="file:")return;
+document.documentElement.className="locked";
+document.addEventListener("DOMContentLoaded",function(){
+ document.body.classList.add("locked");
+ var d=document.createElement("div");d.id="lock";
+ d.innerHTML='<div class="box"><h1>전경 길잡이</h1><p>비밀번호를 입력하세요</p><input id="pw" type="password" inputmode="numeric" autocomplete="off"><button id="pwb">열기</button><div class="err" id="pwe"></div></div>';
+ document.body.appendChild(d);
+ function go(){var v=document.getElementById("pw").value;
+  crypto.subtle.digest("SHA-256",new TextEncoder().encode("gyohwa-lock:"+v)).then(function(b){
+   var h=Array.from(new Uint8Array(b)).map(function(x){return("0"+x.toString(16)).slice(-2)}).join("");
+   if(h===H){try{localStorage.setItem(K,H)}catch(e){}document.body.classList.remove("locked");d.remove()}
+   else document.getElementById("pwe").textContent="비밀번호가 맞지 않음"})}
+ document.getElementById("pwb").onclick=go;
+ document.getElementById("pw").onkeydown=function(e){if(e.key==="Enter")go()};
+});})();
+</script>
+</head>
+<body>
+<div id="app">
+
+  <!-- 홈 -->
+  <section id="v-home" class="view">
+    <header class="top">
+      <div><div class="brand">전경 길잡이</div><div class="brand-sub">구체적 전경과 전경을 시대순으로</div></div>
+    </header>
+    <button class="searchbar" data-go="search"><span class="ico">⌕</span><span>말씀 찾기 · 3:45 처럼 바로가기</span></button>
+    <div id="resume"></div>
+    <div id="install" class="install"></div>
+    <div id="today"></div>
+    <div id="home-list"></div>
+  </section>
+
+  <!-- 목차 -->
+  <section id="v-toc" class="view">
+    <header class="top"><div class="brand">목차</div></header>
+    <div id="toc-list"></div>
+  </section>
+
+  <!-- 찾기 -->
+  <section id="v-search" class="view">
+    <header class="top"><div class="brand">찾기</div></header>
+    <input id="q" type="search" autocomplete="off" placeholder="낱말 또는 3:45 · 행록 1장 7">
+    <div class="chips" id="q-kind"><button data-k="all" class="on">전체</button><button data-k="d">구체적 전경</button><button data-k="j">전경</button></div>
+    <div id="results"></div>
+  </section>
+
+  <!-- 책갈피·메모 -->
+  <section id="v-marks" class="view">
+    <header class="top"><div class="brand">책갈피 · 메모</div></header>
+    <div class="label">책갈피</div><div id="bm-list"></div>
+    <div class="label">내 메모</div><div id="memo-list"></div>
+    <div class="label">백업 (이 폰에만 저장된 책갈피·메모)</div>
+    <div class="set">
+      <button class="row wide" id="b-export"><span>백업 파일로 내보내기</span><span>›</span></button>
+      <button class="row wide" id="b-import"><span>백업 파일 불러오기</span><span>›</span></button>
+      <input type="file" id="b-file" accept=".json,application/json" hidden>
+    </div>
+  </section>
+
+  <!-- 설정 -->
+  <section id="v-more" class="view">
+    <header class="top"><div class="brand">설정</div></header>
+    <div class="set">
+      <div class="row"><span>글자 크기</span><div class="seg" id="s-font"></div></div>
+      <div class="row"><span>화면</span><div class="seg" id="s-theme"></div></div>
+      <div class="row"><span>읽기 속도</span><div class="seg" id="s-rate"></div></div>
+      <div class="row"><span>다 읽으면 다음 장 이어 읽기</span><label class="sw"><input type="checkbox" id="s-auto"><i></i></label></div>
+    </div>
+    <div class="label">앱</div>
+    <div class="set">
+      <button class="row wide" id="m-share"><span>지인에게 앱 주소 보내기</span><span>›</span></button>
+      <button class="row wide" id="m-install"><span>폰에 앱으로 설치하는 법</span><span>›</span></button>
+      <button class="row wide" id="m-voice"><span>읽어주기 음성이 안 나올 때</span><span>›</span></button>
+    </div>
+    <p class="fine">책갈피·메모·마지막으로 본 곳은 이 폰 안에만 저장되며 어디로도 보내지 않습니다. 인터넷이 없어도 한 번 연 뒤에는 그대로 열립니다.</p>
+  </section>
+
+  <!-- 읽기 -->
+  <section id="v-read" class="view">
+    <div class="bar" id="r-bar"></div>
+    <div class="road" id="r-road"></div>
+    <div id="r-body"></div>
+    <div class="rnav"><button id="r-prev"></button><button id="r-play" aria-label="읽어주기">▶</button><button class="next" id="r-next"></button></div>
+  </section>
+
+  <nav class="tabs" id="tabs">
+    <button data-go="home"><span class="ico">⌂</span><span>홈</span></button>
+    <button data-go="toc"><span class="ico">☰</span><span>목차</span></button>
+    <button data-go="read"><span class="ico">📖</span><span>읽기</span></button>
+    <button data-go="search"><span class="ico">⌕</span><span>찾기</span></button>
+    <button data-go="marks"><span class="ico">🔖</span><span>책갈피</span></button>
+    <button data-go="more"><span class="ico">⚙</span><span>설정</span></button>
+  </nav>
+
+  <div id="sheet-bg" class="sheet-bg"></div>
+  <div id="sheet" class="sheet"><div class="grab"></div><div id="sheet-body"></div></div>
+  <div id="toast" class="toast"></div>
+</div>
+<script src="data/toc.js"></script>
+<script src="app.js"></script>
+<script>if("serviceWorker" in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register("sw.js");</script>
+</body>
+</html>
