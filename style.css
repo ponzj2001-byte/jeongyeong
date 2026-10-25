@@ -93,6 +93,8 @@ mark{background:#FFE58A;color:#222;padding:0 1px;border-radius:3px}
 .mk .o small{display:block;color:var(--sub);font-size:12px}
 .mk .x{color:var(--sub);font-size:16px;padding:0 4px}
 .empty{color:var(--sub);font-size:14px;padding:8px 4px}
+.sdst{font-size:14px;line-height:1.5;color:var(--sub)}
+#sd-help{line-height:1.7}
 /* 읽기 */
 #v-read{padding:0 0 150px}
 .bar{position:sticky;top:0;z-index:3;color:#fff;padding:10px 16px 9px;background:var(--c)}

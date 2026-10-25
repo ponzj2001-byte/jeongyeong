@@ -80,6 +80,18 @@ document.addEventListener("DOMContentLoaded",function(){
       <button class="row wide" id="b-import"><span>백업 파일 불러오기</span><span>›</span></button>
       <input type="file" id="b-file" accept=".json,application/json" hidden>
     </div>
+    <div class="label">SD카드 자동 저장 (책갈피·메모가 바뀔 때마다)</div>
+    <div class="set">
+      <div class="row"><span id="sd-st" class="sdst">꺼짐</span></div>
+      <button class="row wide" id="sd-pick"><span>저장할 곳 정하기 (SD카드)</span><span>›</span></button>
+      <button class="row wide" id="sd-now"><span>지금 저장하기</span><span>›</span></button>
+      <button class="row wide" id="sd-off" hidden><span>자동 저장 끄기</span><span>›</span></button>
+    </div>
+    <div class="empty" id="sd-help">
+      ▶ 「저장할 곳 정하기」를 누르면 폰의 파일 고르기 창이 뜹니다. 왼쪽 위 ☰ 를 눌러 <b>SD카드</b>를 고르고, 원하는 폴더에서 「저장」을 누르세요. 그다음부터는 책갈피·메모가 바뀔 때마다 그 파일에 저절로 저장됩니다.<br>
+      ▶ 파일 고르기 창이 뜨지 않는 브라우저는 바뀐 날 하루 한 번 「내려받기」로 저장합니다. 이때는 내려받기 위치를 SD카드로 정해 두세요 — 크롬: ⋮ → 설정 → 다운로드 → 다운로드 위치 → SD 카드 / 삼성 인터넷: ≡ → 설정 → 사이트 및 다운로드 → 다운로드한 파일 저장 위치 → SD 카드.<br>
+      ▶ 폰을 바꾸거나 앱을 다시 설치했을 때는 위 「백업 파일 불러오기」로 SD카드의 저장 파일을 고르면 그대로 돌아옵니다.
+    </div>
   </section>
 
   <!-- 설정 -->

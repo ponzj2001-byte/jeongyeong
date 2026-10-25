@@ -9,7 +9,10 @@
   /* ---------- 저장 ---------- */
   const KEY = "jg-state";
   const S = Object.assign({ fs: 16, theme: "auto", rate: 1, auto: true, last: null, marks: [], memos: {} }, (() => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } })());
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} sdTouch(); };
+  /* SD카드 자동 저장 상태: mode "file"(고른 파일에 바로 덮어쓰기) | "dl"(하루 한 번 내려받기) */
+  const SD = Object.assign({ mode: "", name: "", at: 0, day: "", body: "" }, (() => { try { return JSON.parse(localStorage.getItem("jg-sd")) || {}; } catch (e) { return {}; } })());
+  let sdH = null, sdT = 0, sdReady = false;
 
   /* ---------- 위치·색 ---------- */
   function loc(n) {
@@ -236,6 +239,86 @@
     } catch (x) { toast("이 앱의 백업 파일이 아닙니다"); }
     e.target.value = "";
   };
+
+  /* ---------- SD카드 자동 저장 ----------
+     책갈피·메모가 바뀔 때마다 폰 저장소(SD카드)의 파일에도 같이 저장. 서버로는 보내지 않음.
+     파일 고르기를 지원하는 브라우저: 처음 한 번 SD카드에 파일을 정해 두면 그 파일에 바로 덮어씀.
+     지원하지 않는 브라우저: 바뀐 날 하루 한 번 백업 파일을 내려받음(내려받기 위치를 SD카드로 정해 둠). */
+  const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  const pack = () => JSON.stringify({ app: "jg", v: 1, saved: new Date().toISOString(), marks: S.marks, memos: S.memos, last: S.last, set: { fs: S.fs, theme: S.theme, rate: S.rate, auto: S.auto } }, null, 1);
+  const sdBody = () => JSON.stringify([S.marks, S.memos]);
+  const sdKeep = () => { try { localStorage.setItem("jg-sd", JSON.stringify(SD)); } catch (e) {} };
+  const canPick = () => typeof window.showSaveFilePicker === "function";
+  function idb(val) {
+    return new Promise((ok) => {
+      try {
+        const r = indexedDB.open("jg-files", 1);
+        r.onupgradeneeded = () => r.result.createObjectStore("h");
+        r.onsuccess = () => { try { const st = r.result.transaction("h", val === undefined ? "readonly" : "readwrite").objectStore("h");
+          const q = val === undefined ? st.get("sd") : val === null ? st.delete("sd") : st.put(val, "sd"); q.onsuccess = () => ok(q.result || null); q.onerror = () => ok(null); } catch (e) { ok(null); } };
+        r.onerror = () => ok(null);
+      } catch (e) { ok(null); }
+    });
+  }
+  function sdShow(msg) {
+    const el = $("#sd-st"); if (!el) return;
+    const when = SD.at ? new Date(SD.at).toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+    el.textContent = msg || (SD.mode === "file" ? `켜짐 · 파일 「${SD.name}」에 저장${when ? " · 마지막 저장 " + when : ""}`
+      : SD.mode === "dl" ? `켜짐 · 바뀐 날 하루 한 번 「내려받기」 폴더에 저장${when ? " · 마지막 저장 " + when : ""}` : "꺼짐 · 아래 「저장할 곳 정하기」를 누르세요");
+    $("#sd-off").hidden = !SD.mode;
+  }
+  function sdDone() { SD.at = Date.now(); SD.body = sdBody(); sdKeep(); sdShow(); }
+  async function sdWrite(ask) {
+    if (!sdH) return false;
+    try {
+      let p = await sdH.queryPermission({ mode: "readwrite" });
+      if (p !== "granted" && ask) p = await sdH.requestPermission({ mode: "readwrite" });
+      if (p !== "granted") { sdShow("저장 대기 · 화면을 한 번 누르고 「허용」을 고르면 저장합니다"); return false; }
+      const w = await sdH.createWritable(); await w.write(pack()); await w.close(); sdDone(); return true;
+    } catch (e) { sdShow("저장하지 못했습니다 · 「저장할 곳 정하기」를 다시 눌러 주세요"); return false; }
+  }
+  function sdDownload() {
+    const blob = new Blob([pack()], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `전경길잡이_자동저장_${today()}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000); SD.day = today(); sdDone();
+  }
+  // 책갈피·메모가 바뀌면 부름 (save() 안에서). 읽던 자리만 바뀔 때는 쓰지 않음.
+  function sdTouch(now) {
+    if (!sdReady || !SD.mode) return;
+    if (!now && sdBody() === SD.body) return sdShow();
+    if (SD.mode === "file") { clearTimeout(sdT); sdT = setTimeout(() => sdWrite(false), now ? 0 : 800); }
+    // 내려받기는 사용자가 누른 순간에만 (누르지 않았을 때는 다음 터치 때 저장)
+    else if (now || (SD.day !== today() && (!navigator.userActivation || navigator.userActivation.isActive))) sdDownload();
+    else if (SD.day !== today()) sdShow("바뀐 내용이 있습니다 · 화면을 한 번 누르면 저장합니다");
+    else sdShow("오늘 저장한 뒤 바뀐 내용이 있습니다 · 「지금 저장하기」를 누르거나 내일 첫 변경 때 저장됩니다");
+  }
+  $("#sd-pick").onclick = async () => {
+    if (canPick()) {
+      try {
+        const h = await showSaveFilePicker({ suggestedName: "전경길잡이_자동저장.json", types: [{ description: "전경 길잡이 저장 파일", accept: { "application/json": [".json"] } }] });
+        sdH = h; await idb(h); SD.mode = "file"; SD.name = h.name; sdKeep();
+        if (await sdWrite(true)) toast("SD카드 파일에 저장했습니다. 이제부터 바뀔 때마다 자동 저장합니다");
+      } catch (e) { if (e && e.name !== "AbortError") toast("이 브라우저에서는 파일을 고를 수 없습니다"); }
+    } else {
+      SD.mode = "dl"; sdKeep(); sdDownload(); $("#sd-help").hidden = false;
+      toast("백업 파일을 내려받았습니다. 내려받기 위치를 SD카드로 정해 두세요");
+    }
+  };
+  $("#sd-now").onclick = () => { if (!SD.mode) return $("#sd-pick").click(); if (SD.mode === "file") sdWrite(true).then((ok) => ok && toast("SD카드 파일에 저장했습니다")); else { sdDownload(); toast("백업 파일을 내려받았습니다"); } };
+  $("#sd-off").onclick = () => { if (!confirm("SD카드 자동 저장을 끌까요? (이미 저장된 파일은 그대로 남습니다)")) return; SD.mode = ""; SD.name = ""; sdH = null; idb(null); sdKeep(); sdShow(); };
+  // 앱을 다시 열면: 정해 둔 파일을 되찾고, 그동안 바뀐 것이 있으면 저장. 허락이 다시 필요하면 첫 터치 때 묻기.
+  (async () => {
+    if (SD.mode === "file") { sdH = await idb(); if (!sdH) { SD.mode = ""; sdKeep(); } }
+    sdReady = true; sdShow();
+    const changed = sdBody() !== SD.body;
+    if (SD.mode === "file" && changed && !(await sdWrite(false)) && sdH) {
+      const again = (e) => { if (!e.isTrusted) return; document.removeEventListener("click", again, true); sdWrite(true); };
+      document.addEventListener("click", again, true);
+    } else if (SD.mode === "dl" && changed && SD.day !== today()) {
+      const again = (e) => { if (!e.isTrusted) return; document.removeEventListener("click", again, true); sdTouch(); };
+      document.addEventListener("click", again, true);
+    }
+  })();
 
   /* ---------- 읽어주기 ---------- */
   let speaking = false, queue = [];
