@@ -10,7 +10,7 @@
   const KEY = "jg-state";
   const S = Object.assign({ fs: 16, theme: "auto", rate: 1, auto: true, last: null, marks: [], memos: {} }, (() => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } })());
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} sdTouch(); };
-  /* SD카드 자동 저장 상태: mode "file"(고른 파일에 바로 덮어쓰기) | "dl"(하루 한 번 내려받기) */
+  /* SD카드 자동 저장 상태: mode "dir"(고른 「내폰앱 데이터 저장소」 폴더 › 전경길잡이 › 날짜 폴더) | "file"(고른 파일에 바로 덮어쓰기) | "dl"(하루 한 번 내려받기) */
   const SD = Object.assign({ mode: "", name: "", at: 0, day: "", body: "" }, (() => { try { return JSON.parse(localStorage.getItem("jg-sd")) || {}; } catch (e) { return {}; } })());
   let sdH = null, sdT = 0, sdReady = false;
 
@@ -231,24 +231,34 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 2000); toast("백업 파일을 내려받았습니다");
   };
   $("#b-import").onclick = () => $("#b-file").click();
+  // 백업의 책갈피는 없는 것만 더하고, 메모는 지금 없는 것만 채운다
+  function mergeBackup(d) {
+    const have = new Set(S.marks.map((m) => m.k)); (d.marks || []).forEach((m) => { if (!have.has(m.k)) S.marks.push(m); });
+    Object.entries(d.memos || {}).forEach(([k, v]) => { if (!(k in S.memos)) S.memos[k] = v; });
+  }
   $("#b-file").onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
     try { const d = JSON.parse(await f.text()); if (d.app !== "jg") throw 0;
-      const have = new Set(S.marks.map((m) => m.k)); (d.marks || []).forEach((m) => { if (!have.has(m.k)) S.marks.push(m); });
-      Object.assign(S.memos, d.memos || {}); save(); renderMarks(); toast("백업을 불러왔습니다");
+      mergeBackup(d); Object.assign(S.memos, d.memos || {}); save(); renderMarks(); toast("백업을 불러왔습니다");
     } catch (x) { toast("이 앱의 백업 파일이 아닙니다"); }
     e.target.value = "";
   };
 
   /* ---------- SD카드 자동 저장 ----------
      책갈피·메모가 바뀔 때마다 폰 저장소(SD카드)의 파일에도 같이 저장. 서버로는 보내지 않음.
-     파일 고르기를 지원하는 브라우저: 처음 한 번 SD카드에 파일을 정해 두면 그 파일에 바로 덮어씀.
-     지원하지 않는 브라우저: 바뀐 날 하루 한 번 백업 파일을 내려받음(내려받기 위치를 SD카드로 정해 둠). */
+     폴더 고르기를 지원하는 브라우저: 처음 한 번 SD카드의 「내폰앱 데이터 저장소」 폴더를 고르면
+       그 안 「전경길잡이/날짜(yyyy-mm-dd)/전경길잡이_기록.json」에 바뀐 날마다 저장 (날짜 이름이라 이름순 = 날짜순).
+     파일 고르기만 되는 브라우저: 처음 한 번 SD카드에 파일을 정해 두면 그 파일에 바로 덮어씀.
+     둘 다 안 되는 브라우저: 바뀐 날 하루 한 번 백업 파일을 내려받음(내려받기 위치를 SD카드로 정해 둠). */
+  const VAULT = "내폰앱 데이터 저장소", APPDIR = "전경길잡이", REC = "전경길잡이_기록.json";
   const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
   const pack = () => JSON.stringify({ app: "jg", v: 1, saved: new Date().toISOString(), marks: S.marks, memos: S.memos, last: S.last, set: { fs: S.fs, theme: S.theme, rate: S.rate, auto: S.auto } }, null, 1);
   const sdBody = () => JSON.stringify([S.marks, S.memos]);
   const sdKeep = () => { try { localStorage.setItem("jg-sd", JSON.stringify(SD)); } catch (e) {} };
   const canPick = () => typeof window.showSaveFilePicker === "function";
+  const canDir = () => typeof window.showDirectoryPicker === "function";
+  // 고른 폴더 → 이 앱 폴더: 「전경길잡이」를 골랐으면 그대로, 아니면 그 안에 「전경길잡이」를 만든다
+  const appDir = (h) => h.name === APPDIR ? h : h.getDirectoryHandle(APPDIR, { create: true });
   function idb(val) {
     return new Promise((ok) => {
       try {
@@ -263,7 +273,8 @@
   function sdShow(msg) {
     const el = $("#sd-st"); if (!el) return;
     const when = SD.at ? new Date(SD.at).toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
-    el.textContent = msg || (SD.mode === "file" ? `켜짐 · 파일 「${SD.name}」에 저장${when ? " · 마지막 저장 " + when : ""}`
+    el.textContent = msg || (SD.mode === "dir" ? `켜짐 · 「${SD.name} › ${APPDIR}」 폴더에 날짜별로 저장${when ? " · 마지막 저장 " + when : ""}`
+      : SD.mode === "file" ? `켜짐 · 파일 「${SD.name}」에 저장${when ? " · 마지막 저장 " + when : ""}${canDir() ? " · 「저장할 곳 정하기」로 「" + VAULT + "」 폴더를 고르면 날짜별로 저장합니다" : ""}`
       : SD.mode === "dl" ? `켜짐 · 바뀐 날 하루 한 번 「내려받기」 폴더에 저장${when ? " · 마지막 저장 " + when : ""}` : "꺼짐 · 아래 「저장할 곳 정하기」를 누르세요");
     $("#sd-off").hidden = !SD.mode;
   }
@@ -274,8 +285,26 @@
       let p = await sdH.queryPermission({ mode: "readwrite" });
       if (p !== "granted" && ask) p = await sdH.requestPermission({ mode: "readwrite" });
       if (p !== "granted") { sdShow("저장 대기 · 화면을 한 번 누르고 「허용」을 고르면 저장합니다"); return false; }
-      const w = await sdH.createWritable(); await w.write(pack()); await w.close(); sdDone(); return true;
+      const fh = SD.mode === "dir" ? await (await (await appDir(sdH)).getDirectoryHandle(today(), { create: true })).getFileHandle(REC, { create: true }) : sdH;
+      const w = await fh.createWritable(); await w.write(pack()); await w.close(); sdDone(); return true;
     } catch (e) { sdShow("저장하지 못했습니다 · 「저장할 곳 정하기」를 다시 눌러 주세요"); return false; }
+  }
+  // 앱을 새로 설치해 책갈피·메모가 하나도 없을 때 폴더를 고르면: 가장 최근 날짜의 기록을 불러올지 묻는다
+  // (묻지 않고 쓰면 오늘 날짜 기록을 빈 내용으로 덮어쓰게 된다)
+  async function restoreFromDir(h) {
+    if (S.marks.length || Object.keys(S.memos).length) return;
+    try {
+      const dir = await appDir(h), days = [];
+      for await (const [name, e] of dir.entries()) if (e.kind === "directory" && /^\d{4}-\d{2}-\d{2}$/.test(name)) days.push(name);
+      for (const day of days.sort().reverse()) {
+        let f; try { f = await (await (await dir.getDirectoryHandle(day)).getFileHandle(REC)).getFile(); } catch (e) { continue; }
+        const d = JSON.parse(await f.text()); if (d.app !== "jg") return;
+        if ((d.marks || []).length + Object.keys(d.memos || {}).length === 0) return;
+        if (!confirm(`「${APPDIR} › ${day}」에 예전 기록(책갈피 ${(d.marks || []).length}개 · 메모 ${Object.keys(d.memos || {}).length}개)이 있습니다.\n불러올까요?`)) return;
+        mergeBackup(d); try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} renderMarks(); toast("예전 기록을 불러왔습니다");
+        return;
+      }
+    } catch (e) { /* 불러오지 못해도 저장은 계속한다 */ }
   }
   function sdDownload() {
     const blob = new Blob([pack()], { type: "application/json" });
@@ -286,14 +315,22 @@
   function sdTouch(now) {
     if (!sdReady || !SD.mode) return;
     if (!now && sdBody() === SD.body) return sdShow();
-    if (SD.mode === "file") { clearTimeout(sdT); sdT = setTimeout(() => sdWrite(false), now ? 0 : 800); }
+    if (SD.mode === "file" || SD.mode === "dir") { clearTimeout(sdT); sdT = setTimeout(() => sdWrite(false), now ? 0 : 800); }
     // 내려받기는 사용자가 누른 순간에만 (누르지 않았을 때는 다음 터치 때 저장)
     else if (now || (SD.day !== today() && (!navigator.userActivation || navigator.userActivation.isActive))) sdDownload();
     else if (SD.day !== today()) sdShow("바뀐 내용이 있습니다 · 화면을 한 번 누르면 저장합니다");
     else sdShow("오늘 저장한 뒤 바뀐 내용이 있습니다 · 「지금 저장하기」를 누르거나 내일 첫 변경 때 저장됩니다");
   }
   $("#sd-pick").onclick = async () => {
-    if (canPick()) {
+    if (canDir()) {
+      try {
+        const h = await showDirectoryPicker({ id: "jg-vault", mode: "readwrite" });
+        if (h.name !== VAULT && h.name !== APPDIR && !confirm(`고른 폴더 「${h.name}」는 「${VAULT}」 폴더가 아닙니다.\n이 폴더 안에 「${APPDIR}」 폴더를 만들어 저장할까요?`)) return;
+        sdH = h; await idb(h); SD.mode = "dir"; SD.name = h.name; SD.body = ""; sdKeep();
+        await restoreFromDir(h);
+        if (await sdWrite(true)) toast(`「${h.name} › ${APPDIR} › ${today()}」에 저장했습니다. 이제부터 바뀔 때마다 날짜별로 자동 저장합니다`);
+      } catch (e) { if (e && e.name !== "AbortError") toast("이 폴더에는 저장할 수 없습니다 · SD카드의 「" + VAULT + "」 폴더를 골라 주세요"); }
+    } else if (canPick()) {
       try {
         const h = await showSaveFilePicker({ suggestedName: "전경길잡이_자동저장.json", types: [{ description: "전경 길잡이 저장 파일", accept: { "application/json": [".json"] } }] });
         sdH = h; await idb(h); SD.mode = "file"; SD.name = h.name; sdKeep();
@@ -304,14 +341,15 @@
       toast("백업 파일을 내려받았습니다. 내려받기 위치를 SD카드로 정해 두세요");
     }
   };
-  $("#sd-now").onclick = () => { if (!SD.mode) return $("#sd-pick").click(); if (SD.mode === "file") sdWrite(true).then((ok) => ok && toast("SD카드 파일에 저장했습니다")); else { sdDownload(); toast("백업 파일을 내려받았습니다"); } };
+  $("#sd-now").onclick = () => { if (!SD.mode) return $("#sd-pick").click(); if (SD.mode === "file" || SD.mode === "dir") sdWrite(true).then((ok) => ok && toast("SD카드에 저장했습니다")); else { sdDownload(); toast("백업 파일을 내려받았습니다"); } };
   $("#sd-off").onclick = () => { if (!confirm("SD카드 자동 저장을 끌까요? (이미 저장된 파일은 그대로 남습니다)")) return; SD.mode = ""; SD.name = ""; sdH = null; idb(null); sdKeep(); sdShow(); };
   // 앱을 다시 열면: 정해 둔 파일을 되찾고, 그동안 바뀐 것이 있으면 저장. 허락이 다시 필요하면 첫 터치 때 묻기.
   (async () => {
-    if (SD.mode === "file") { sdH = await idb(); if (!sdH) { SD.mode = ""; sdKeep(); } }
+    const handled = SD.mode === "file" || SD.mode === "dir";
+    if (handled) { sdH = await idb(); if (!sdH) { SD.mode = ""; sdKeep(); } }
     sdReady = true; sdShow();
     const changed = sdBody() !== SD.body;
-    if (SD.mode === "file" && changed && !(await sdWrite(false)) && sdH) {
+    if (handled && sdH && changed && !(await sdWrite(false))) {
       const again = (e) => { if (!e.isTrusted) return; document.removeEventListener("click", again, true); sdWrite(true); };
       document.addEventListener("click", again, true);
     } else if (SD.mode === "dl" && changed && SD.day !== today()) {
